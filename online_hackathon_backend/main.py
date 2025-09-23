@@ -6,6 +6,7 @@ import uvicorn
 import os
 import uuid
 import shutil
+import httpx  # 🔥 추가
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
@@ -32,6 +33,14 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 # DB 테이블 생성
 Base.metadata.create_all(bind=engine)
 
+# 🔥 클라우드 설정 추가
+CLOUD_UPLOAD_URL = "http://223.130.128.36:8080/upload"
+CLOUD_ANALYZE_URL = "http://223.130.128.36:8080/analyze"
+
+# 🔥 모델 추가
+class AnalysisRequest(BaseModel):
+    file_path: str
+
 # 응답 모델 
 class UploadResponse(BaseModel):
     filename: str
@@ -54,6 +63,26 @@ class PhoneCheckResponse(BaseModel):
     confidence: float
     message: str
     details: Optional[dict] = None
+
+# 🔥 헬퍼 함수 추가
+def extract_keywords(reason_text: str) -> list:
+    keywords = []
+    risk_words = ["긴급", "계좌이체", "확인", "카드", "은행"]
+    for word in risk_words:
+        if word in reason_text:
+            keywords.append(word)
+    return keywords
+
+def calculate_sentiment(risk_score: int) -> float:
+    return -1.0 + (2.0 * (100 - risk_score) / 100)
+
+def determine_urgency(risk_score: int) -> str:
+    if risk_score >= 70:
+        return "high"
+    elif risk_score >= 40:
+        return "medium"
+    else:
+        return "low"
 
 # 전화번호 검색 엔드포인트
 @app.post("/check-phone", response_model=PhoneCheckResponse)
@@ -101,15 +130,15 @@ async def report_phone_number(
     clean_number = phone_number.replace("-", "").replace(" ", "")
     
     # 이미 존재하는지 확인
-    existing = db.query(PhishingPhone).filter(
-        PhishingPhone.phone_number == clean_number
+    existing = db.query(PhoneReport).filter(  # 🔥 수정
+        PhoneReport.phone_number == clean_number
     ).first()
     
     if existing:
         return {"message": "이미 신고된 번호입니다.", "status": "exists"}
     
     # 새로운 신고 추가
-    new_report = PhishingPhone(
+    new_report = PhoneReport(  # 🔥 수정
         phone_number=clean_number,
         reporter_name=reporter_name,
         description=description,
@@ -162,10 +191,10 @@ async def upload_audio_file(file: UploadFile = File(...)):
             file_path.unlink()
         raise HTTPException(status_code=500, detail=f"파일 업로드 실패: {str(e)}")
 
-# 분석 요청 엔드포인트
+# 🔥 분석 요청 엔드포인트 수정 (클라우드 업로드 + 경로 전달)
 @app.post("/analyze", response_model=AnalysisResponse)
 async def analyze_audio(request: AnalysisRequest):
-    """클라우드 AI 모델에 분석 요청 (실제 AI 모델 연동)"""
+    """파일을 클라우드에 업로드하고 분석 요청"""
     
     file_path = request.file_path
     
@@ -173,8 +202,9 @@ async def analyze_audio(request: AnalysisRequest):
         raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
     
     try:
-        # 🔥 클라우드 AI 모델 API 호출
         async with httpx.AsyncClient() as client:
+            
+            # 🔥 1단계: 클라우드에 파일 업로드
             with open(file_path, 'rb') as audio_file:
                 files = {
                     "audio": (
@@ -184,30 +214,36 @@ async def analyze_audio(request: AnalysisRequest):
                     )
                 }
                 
-                response = await client.post(
-                    MODEL_API_URL,
+                upload_response = await client.post(
+                    CLOUD_UPLOAD_URL,
                     files=files,
-                    timeout=120
+                    timeout=60
                 )
-            
-            if response.status_code == 200:
-                # 🔥 AI 모델의 실제 응답
-                ai_result = response.json()
-                # 예상 구조:
-                # {
-                #     "decision": "보이스피싱",
-                #     "risk_score": 85,
-                #     "reason": "긴급 상황을 조성하고...",
-                #     "type": "impersonation_scam",
-                #     "transcribed_text": "실제 통화 내용...",
-                #     "processing_time": 2.3
-                # }
                 
-                # 🔥 프론트엔드 형식으로 변환
+            if upload_response.status_code != 200:
+                raise HTTPException(500, f"클라우드 업로드 실패: {upload_response.status_code}")
+            
+            upload_result = upload_response.json()
+            cloud_file_path = upload_result.get("file_path")
+            
+            # 🔥 2단계: 클라우드 경로로 분석 요청
+            analyze_response = await client.post(
+                CLOUD_ANALYZE_URL,
+                json={
+                    "file_path": cloud_file_path,
+                    "analysis_type": "voice_phishing"
+                },
+                timeout=120
+            )
+            
+            if analyze_response.status_code == 200:
+                ai_result = analyze_response.json()
+                
+                # 프론트엔드 형식으로 변환
                 analysis_result = {
                     "is_phishing": ai_result.get("decision") == "보이스피싱",
                     "confidence": ai_result.get("risk_score", 0) / 100.0,
-                    "deepfake_probability": 0.0,  # AI 모델에서 제공하지 않으면 0으로
+                    "deepfake_probability": 0.0,
                     "content_analysis": {
                         "risk_keywords": extract_keywords(ai_result.get("reason", "")),
                         "sentiment_score": calculate_sentiment(ai_result.get("risk_score", 50)),
@@ -216,8 +252,8 @@ async def analyze_audio(request: AnalysisRequest):
                     "audio_features": {
                         "transcribed_text": ai_result.get("transcribed_text", ""),
                         "duration": ai_result.get("duration", 0),
-                        "sample_rate": 16000,  # 기본값
-                        "channels": 1,  # 기본값
+                        "sample_rate": 16000,
+                        "channels": 1,
                         "processing_time": ai_result.get("processing_time", 0)
                     },
                     "model_details": {
@@ -230,11 +266,11 @@ async def analyze_audio(request: AnalysisRequest):
                 
                 return AnalysisResponse(
                     file_path=file_path,
-                    cloud_path=f"processed/{os.path.basename(file_path)}",
+                    cloud_path=cloud_file_path,
                     analysis_result=analysis_result
                 )
             else:
-                raise HTTPException(500, f"AI 모델 오류: {response.status_code}")
+                raise HTTPException(500, f"AI 분석 실패: {analyze_response.status_code}")
                 
     except Exception as e:
         raise HTTPException(500, f"분석 실패: {str(e)}")
