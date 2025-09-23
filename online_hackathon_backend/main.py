@@ -19,7 +19,7 @@ app = FastAPI(title="Voice Phishing Detection Server")
 # CORS 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8501"],
+    allow_origins=["http://localhost:8501", "http://frontend:8501", "*"],  # Docker 환경 대응
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

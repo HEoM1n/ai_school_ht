@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./online_hackathon_backend
+    container_name: voice_phishing_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ORACLE_USER=system
+      - ORACLE_PASSWORD=yourpassword
+      - ORACLE_HOST=host.docker.internal  # Docker Desktop에서 호스트 접근
+      - ORACLE_PORT=1521
+      - ORACLE_SERVICE=xe
+    volumes:
+      - ./online_hackathon_backend/uploads:/app/uploads
+    networks:
+      - voice_phishing_network
+    restart: unless-stopped
+
+  frontend:
+    build: ./online_hackathon_frontend
+    container_name: voice_phishing_frontend
+    ports:
+      - "8501:8501"
+    environment:
+      - API_BASE_URL=http://backend:8000
+    depends_on:
+      - backend
+    networks:
+      - voice_phishing_network
+    restart: unless-stopped
+
+networks:
+  voice_phishing_network:
+    driver: bridge
+
+volumes:
+  uploads_data:
