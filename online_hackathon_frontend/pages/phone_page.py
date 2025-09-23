@@ -65,16 +65,12 @@ if search_button and phone_input:
                         details = result["details"]
                         
                         with st.expander("📋 상세 정보", expanded=True):
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                st.write(f"**신고일:** {details['reported_date']}")
-                                st.write(f"**신고자:** {details['reporter_name']}")
-                            with col2:
-                                st.write(f"**확인 상태:** {details['confirmation_status']}")
-                                st.write(f"**신뢰도:** {result['confidence']:.1%}")
-                            
-                            if details['description']:
-                                st.write(f"**상세 내용:** {details['description']}")
+                            col_left, col_right = st.columns(2)
+                            with col_left:
+                                st.write(f"**신고 횟수:** {details.get('report_count', 0)}")
+                            if details.get('description'):
+                                st.markdown("**상세 설명:**")
+                                st.write(details['description'])
                     
                     # 주의사항
                     st.markdown("### ⚠️ 긴급 대처 방법")

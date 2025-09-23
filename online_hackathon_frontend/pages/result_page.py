@@ -5,18 +5,17 @@ from datetime import datetime
 col1, col2, col3 = st.columns([1, 4, 1])
 with col1:
     if st.button("🏠 홈으로", type="secondary"):
-        st.switch_page("pages/home.py")  # 🔥 변경")
+        st.switch_page("pages/home.py")
 
 # 페이지 제목
 st.title("📊 분석 결과")
 st.markdown("---")
 
 # 결과 데이터 확인
-# 결과가 없을 때
 if 'analysis_result' not in st.session_state:
     st.error("⚠️ 분석 결과가 없습니다.")
     if st.button("🏠 메인 페이지로 돌아가기"):
-        st.switch_page("pages/home.py")  # 🔥 변경
+        st.switch_page("pages/home.py")
     st.stop()
 
 # 결과 데이터 가져오기
@@ -39,11 +38,18 @@ st.markdown("---")
 # 메인 결과 표시
 result_data = analysis_result['analysis_result']
 
-# 위험도 표시
+# 🔥 AI 모델 결과 기반 위험도 표시
 if result_data['is_phishing']:
     st.error("🚨 **보이스 피싱 위험 감지!**")
+    
+    # 🔥 AI 모델의 상세 이유 표시
+    if 'model_details' in result_data and result_data['model_details']['reason']:
+        st.markdown("### 🔍 AI 분석 상세")
+        st.warning(f"**분석 이유:** {result_data['model_details']['reason']}")
+    
     st.markdown("### ⚠️ 주의사항")
-    st.warning("이 통화는 보이스피싱으로 의심됩니다. 개인정보나 금융정보를 제공하지 마세요!")
+    st.error("이 통화는 보이스피싱으로 의심됩니다. 개인정보나 금융정보를 제공하지 마세요!")
+    
 else:
     st.success("✅ **정상 통화로 판단됩니다**")
     st.info("분석 결과 보이스피싱 위험이 낮습니다.")
@@ -54,21 +60,32 @@ col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     st.metric("전체 신뢰도", f"{result_data['confidence']:.1%}")
-
+    
 with col2:
-    st.metric("딥페이크 확률", f"{result_data['deepfake_probability']:.1%}")
+    # 🔥 AI 모델의 위험도 점수 표시
+    if 'model_details' in result_data:
+        st.metric("AI 위험도", f"{result_data['model_details']['risk_score']}/100")
+    else:
+        st.metric("딥페이크 확률", f"{result_data['deepfake_probability']:.1%}")
 
 with col3:
     content_analysis = result_data['content_analysis']
     st.metric("긴급도", content_analysis['urgency_level'].upper())
 
 with col4:
-    st.metric("처리 시간", f"{result_data['processing_time']:.1f}초")
+    audio_features = result_data['audio_features']
+    st.metric("처리 시간", f"{audio_features['processing_time']:.1f}초")
 
 # 진행률 바로 위험도 시각화
 st.markdown("### 📊 위험도 분석")
 risk_score = result_data['confidence'] if result_data['is_phishing'] else (1 - result_data['confidence'])
 st.progress(risk_score)
+
+# 🔥 AI 모델의 통화 내용 텍스트 표시
+if audio_features.get('transcribed_text'):
+    st.markdown("### 🎙️ 통화 내용 (STT)")
+    with st.expander("📝 변환된 텍스트 보기", expanded=False):
+        st.text_area("통화 내용", audio_features['transcribed_text'], height=150, disabled=True)
 
 # 상세 분석 결과
 st.markdown("### 🔍 상세 분석")
@@ -79,8 +96,11 @@ with st.expander("📝 컨텐츠 분석", expanded=True):
     
     # 키워드 표시
     keywords = content_analysis['risk_keywords']
-    keyword_text = " ".join([f"🔴 {keyword}" for keyword in keywords])
-    st.markdown(keyword_text)
+    if keywords:
+        keyword_text = " ".join([f"🔴 {keyword}" for keyword in keywords])
+        st.markdown(keyword_text)
+    else:
+        st.info("위험 키워드가 발견되지 않았습니다.")
     
     st.markdown("---")
     col1, col2 = st.columns(2)
@@ -89,17 +109,39 @@ with st.expander("📝 컨텐츠 분석", expanded=True):
     with col2:
         st.metric("긴급도 레벨", content_analysis['urgency_level'].upper())
 
+# 🔥 AI 모델 상세 정보
+if 'model_details' in result_data:
+    with st.expander("🤖 AI 모델 분석 결과"):
+        model_details = result_data['model_details']
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric("AI 판정", model_details['decision'])
+            st.metric("위험도 점수", f"{model_details['risk_score']}/100")
+            
+        with col2:
+            st.metric("보이스피싱 유형", model_details.get('type', 'unknown'))
+            
+        if model_details.get('reason'):
+            st.markdown("**AI 분석 근거:**")
+            st.text_area("상세 이유", model_details['reason'], height=100, disabled=True)
+
 # 오디오 특성
 with st.expander("🎵 오디오 특성 분석"):
-    audio_features = result_data['audio_features']
-    
     col1, col2, col3 = st.columns(3)
+    
     with col1:
-        st.metric("재생 시간", f"{audio_features['duration']:.1f}초")
+        duration = audio_features.get('duration', 0)
+        if duration > 0:
+            st.metric("재생 시간", f"{duration:.1f}초")
+        else:
+            st.metric("재생 시간", "N/A")
+    
     with col2:
-        st.metric("샘플링 레이트", f"{audio_features['sample_rate']:,} Hz")
+        st.metric("샘플링 레이트", f"{audio_features.get('sample_rate', 16000):,} Hz")
+    
     with col3:
-        st.metric("채널 수", audio_features['channels'])
+        st.metric("채널 수", audio_features.get('channels', 1))
 
 # Raw Data
 with st.expander("🔧 Raw Data (고급 사용자용)"):
@@ -116,7 +158,7 @@ with col1:
             del st.session_state['analysis_result']
         if 'upload_result' in st.session_state:
             del st.session_state['upload_result']
-        st.switch_page("pages/home.py")  # 🔥 변경
+        st.switch_page("pages/home.py")
 
 with col2:
     if st.button("🎙️ 새 파일 분석", use_container_width=True):
@@ -134,13 +176,9 @@ with col3:
 # 사이드바
 with st.sidebar:
     st.header("🧭 네비게이션")
-    
-    if st.button("🏠 홈으로", type="secondary"):
-        st.switch_page("pages/home.py")  # ✅ 수정
-
-    
+    if st.button("🏠 홈으로 이동", key="nav_home"):
+        st.switch_page("pages/home.py")
     if st.button("📞 번호 검색", key="nav_phone"):
         st.switch_page("pages/phone_page.py")
-        
     if st.button("🎙️ 통화 분석", key="nav_analysis"):
         st.switch_page("pages/analysis_page.py")

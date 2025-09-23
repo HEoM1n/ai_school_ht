@@ -12,7 +12,7 @@ from datetime import datetime
 
 # 로컬 import
 from database import get_db, engine, Base
-from models import PhishingPhone
+from models import PhoneReport
 
 app = FastAPI(title="Voice Phishing Detection Server")
 
@@ -32,7 +32,7 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 # DB 테이블 생성
 Base.metadata.create_all(bind=engine)
 
-# 응답 모델
+# 응답 모델 
 class UploadResponse(BaseModel):
     filename: str
     file_path: str
@@ -61,32 +61,28 @@ async def check_phone_number(request: PhoneCheckRequest, db: Session = Depends(g
     """전화번호 보이스피싱 DB 검색"""
     
     phone_number = request.phone_number.strip()
-    
-    # 전화번호 포맷 정규화 (하이픈 제거)
     clean_number = phone_number.replace("-", "").replace(" ", "")
     
-    # DB에서 검색
-    phishing_record = db.query(PhishingPhone).filter(
-        PhishingPhone.phone_number == clean_number
+    phishing_record = db.query(PhoneReport).filter(
+        PhoneReport.phone_number == clean_number
     ).first()
     
     if phishing_record:
         return PhoneCheckResponse(
             phone_number=phone_number,
-            is_phishing=True,
+            is_phishing=int(phishing_record.is_phishing),
             confidence=0.95,
             message="⚠️ 이 번호는 보이스피싱 의심 번호로 신고된 이력이 있습니다!",
             details={
-                "reported_date": phishing_record.reported_date.strftime("%Y-%m-%d %H:%M:%S"),
-                "reporter_name": phishing_record.reporter_name,
+                "spam_type": phishing_record.spam_type,
                 "description": phishing_record.description,
-                "confirmation_status": "확인됨" if phishing_record.is_confirmed else "미확인"
+                "report_count": phishing_record.report_count
             }
         )
     else:
         return PhoneCheckResponse(
             phone_number=phone_number,
-            is_phishing=False,
+            is_phishing=0,
             confidence=0.8,
             message="✅ 이 번호는 보이스피싱 DB에서 발견되지 않았습니다.",
             details=None
@@ -168,39 +164,80 @@ async def upload_audio_file(file: UploadFile = File(...)):
 
 # 분석 요청 엔드포인트
 @app.post("/analyze", response_model=AnalysisResponse)
-async def analyze_audio(file_path: str):
-    """파일 경로를 받아 분석 요청"""
+async def analyze_audio(request: AnalysisRequest):
+    """클라우드 AI 모델에 분석 요청 (실제 AI 모델 연동)"""
     
-    # 파일 존재 여부 확인
+    file_path = request.file_path
+    
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
     
-    # 클라우드 경로 모킹
-    cloud_path = f"gs://voice-analysis-bucket/{os.path.basename(file_path)}"
-    
-    # 분석 결과 모킹 (실제로는 AI 모델 분석 결과)
-    mock_analysis_result = {
-        "is_phishing": True,
-        "confidence": 0.87,
-        "deepfake_probability": 0.72,
-        "content_analysis": {
-            "risk_keywords": ["긴급", "계좌이체", "확인"],
-            "sentiment_score": -0.65,
-            "urgency_level": "high"
-        },
-        "audio_features": {
-            "duration": 45.2,
-            "sample_rate": 16000,
-            "channels": 1
-        },
-        "processing_time": 2.3
-    }
-    
-    return AnalysisResponse(
-        file_path=file_path,
-        cloud_path=cloud_path,
-        analysis_result=mock_analysis_result
-    )
+    try:
+        # 🔥 클라우드 AI 모델 API 호출
+        async with httpx.AsyncClient() as client:
+            with open(file_path, 'rb') as audio_file:
+                files = {
+                    "audio": (
+                        os.path.basename(file_path),
+                        audio_file,
+                        "audio/wav"
+                    )
+                }
+                
+                response = await client.post(
+                    MODEL_API_URL,
+                    files=files,
+                    timeout=120
+                )
+            
+            if response.status_code == 200:
+                # 🔥 AI 모델의 실제 응답
+                ai_result = response.json()
+                # 예상 구조:
+                # {
+                #     "decision": "보이스피싱",
+                #     "risk_score": 85,
+                #     "reason": "긴급 상황을 조성하고...",
+                #     "type": "impersonation_scam",
+                #     "transcribed_text": "실제 통화 내용...",
+                #     "processing_time": 2.3
+                # }
+                
+                # 🔥 프론트엔드 형식으로 변환
+                analysis_result = {
+                    "is_phishing": ai_result.get("decision") == "보이스피싱",
+                    "confidence": ai_result.get("risk_score", 0) / 100.0,
+                    "deepfake_probability": 0.0,  # AI 모델에서 제공하지 않으면 0으로
+                    "content_analysis": {
+                        "risk_keywords": extract_keywords(ai_result.get("reason", "")),
+                        "sentiment_score": calculate_sentiment(ai_result.get("risk_score", 50)),
+                        "urgency_level": determine_urgency(ai_result.get("risk_score", 50))
+                    },
+                    "audio_features": {
+                        "transcribed_text": ai_result.get("transcribed_text", ""),
+                        "duration": ai_result.get("duration", 0),
+                        "sample_rate": 16000,  # 기본값
+                        "channels": 1,  # 기본값
+                        "processing_time": ai_result.get("processing_time", 0)
+                    },
+                    "model_details": {
+                        "decision": ai_result.get("decision", "알 수 없음"),
+                        "risk_score": ai_result.get("risk_score", 0),
+                        "reason": ai_result.get("reason", ""),
+                        "type": ai_result.get("type", "unknown")
+                    }
+                }
+                
+                return AnalysisResponse(
+                    file_path=file_path,
+                    cloud_path=f"processed/{os.path.basename(file_path)}",
+                    analysis_result=analysis_result
+                )
+            else:
+                raise HTTPException(500, f"AI 모델 오류: {response.status_code}")
+                
+    except Exception as e:
+        raise HTTPException(500, f"분석 실패: {str(e)}")
 
 # 기존 엔드포인트들
 @app.get("/files")
