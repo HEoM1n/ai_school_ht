@@ -14,50 +14,23 @@ def check_phone_number(phone_number):
         st.error(f"검색 실패: {e}")
         return None
 
-def report_phone_number(phone_number, reporter_name, description):
-    """보이스피싱 번호 신고"""
-    url = f"{st.session_state.API_BASE_URL}/report-phone"
-    
-    try:
-        response = requests.post(
-            url, 
-            params={
-                "phone_number": phone_number,
-                "reporter_name": reporter_name,
-                "description": description
-            }
-        )
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        st.error(f"신고 실패: {e}")
-        return None
-
 def validate_phone_number(phone_number):
     """전화번호 유효성 검사"""
     # 한국 전화번호 형식 체크
     pattern = r'^01[0-9]-?[0-9]{3,4}-?[0-9]{4}$'
     return re.match(pattern, phone_number.replace(" ", "")) is not None
 
+col1, col2, col3 = st.columns([1, 4, 1])
+with col1:
+    if st.button("🏠 홈으로", type="secondary"):
+        st.switch_page("pages/home.py")  # home.py로 변경
+
 # 페이지 제목
 st.title("📞 전화번호 검색")
 st.markdown("---")
 
-# 시스템 상태
-with st.sidebar:
-    st.header("📊 시스템 상태")
-    try:
-        response = requests.get(f"{st.session_state.API_BASE_URL}/health")
-        if response.status_code == 200:
-            st.success("✅ 서버 연결됨")
-        else:
-            st.error("❌ 서버 연결 실패")
-    except:
-        st.error("❌ 서버 연결 불가")
-
-# 메인 검색 섹션
-st.subheader("🔍 보이스피싱 번호 검색")
-st.info("의심스러운 전화번호를 입력하여 보이스피싱 이력을 확인하세요.")
+# 설명
+st.info("🔍 의심스러운 전화번호를 입력하여 보이스피싱 신고 이력을 즉시 확인하세요.")
 
 # 전화번호 입력
 col1, col2 = st.columns([3, 1])
@@ -104,11 +77,12 @@ if search_button and phone_input:
                                 st.write(f"**상세 내용:** {details['description']}")
                     
                     # 주의사항
-                    st.markdown("### ⚠️ 주의사항")
-                    st.warning("""
-                    - 이 번호로부터의 통화를 즉시 차단하세요
-                    - 개인정보나 금융정보를 절대 제공하지 마세요
-                    - 경찰서(112) 또는 금융감독원(1332)에 신고하세요
+                    st.markdown("### ⚠️ 긴급 대처 방법")
+                    st.error("""
+                    1. 🚫 **즉시 통화 차단** - 더 이상 대화하지 마세요
+                    2. 🔒 **개인정보 보호** - 이름, 주민번호, 계좌번호 절대 말하지 마세요  
+                    3. 📞 **신고하기** - 경찰서(112) 또는 금융감독원(1332)에 즉시 신고
+                    4. 🏦 **금융기관 확인** - 의심스러면 해당 기관에 직접 전화로 확인
                     """)
                     
                 else:
@@ -116,68 +90,35 @@ if search_button and phone_input:
                     st.info(result["message"])
                     st.write(f"**신뢰도:** {result['confidence']:.1%}")
                     
-                    st.markdown("### 💡 안내")
-                    st.info("현재 DB에서 보이스피싱 이력이 발견되지 않았지만, 새로운 번호일 수 있으므로 항상 주의하세요.")
-
-# 구분선
-st.markdown("---")
-
-# 신고 섹션
-st.subheader("🚨 보이스피싱 번호 신고")
-
-with st.expander("보이스피싱 번호 신고하기"):
-    st.write("보이스피싱을 당했거나 의심스러운 번호가 있다면 신고해주세요.")
-    
-    # 신고 폼
-    with st.form("report_form"):
-        report_phone = st.text_input(
-            "신고할 전화번호",
-            placeholder="예: 010-9876-5432"
-        )
-        
-        reporter_name = st.text_input(
-            "신고자 이름 (선택사항)",
-            placeholder="익명으로 신고하려면 비워두세요"
-        )
-        
-        description = st.text_area(
-            "상세 내용",
-            placeholder="어떤 방식으로 피싱을 시도했는지 설명해주세요",
-            height=100
-        )
-        
-        submit_report = st.form_submit_button("🚨 신고하기", type="primary")
-        
-        if submit_report:
-            if not report_phone:
-                st.error("신고할 전화번호를 입력해주세요.")
-            elif not validate_phone_number(report_phone):
-                st.error("올바른 전화번호 형식을 입력해주세요.")
-            else:
-                with st.spinner("신고 접수 중..."):
-                    report_result = report_phone_number(
-                        report_phone,
-                        reporter_name if reporter_name else "익명",
-                        description
-                    )
+                    st.markdown("### 💡 안내사항")
+                    st.info("""
+                    - 현재 DB에서 보이스피싱 이력이 발견되지 않았습니다
+                    - 새로운 번호이거나 최근에 생성된 번호일 수 있으니 여전히 주의하세요
+                    - 의심스러운 내용의 통화라면 개인정보 제공을 피하세요
+                    """)
                     
-                    if report_result:
-                        if report_result["status"] == "success":
-                            st.success("✅ 신고가 성공적으로 접수되었습니다!")
-                            st.balloons()
-                        elif report_result["status"] == "exists":
-                            st.info("ℹ️ 이미 신고된 번호입니다.")
-                        
-                        st.write(report_result["message"])
+                    # 추가 분석 제안
+                    st.markdown("---")
+                    if st.button("🎙️ 통화 내용도 분석해보기", type="secondary"):
+                        st.switch_page("pages/analysis_page.py")
 
-# 하단 정보
-st.markdown("---")
-st.markdown("### 📞 긴급 신고처")
-
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.info("**경찰서**\n📞 112")
-with col2:
-    st.info("**금융감독원**\n📞 1332")
-with col3:
-    st.info("**사이버경찰청**\n🌐 [cyber.go.kr](https://cyber.go.kr)")
+# 시스템 상태
+with st.sidebar:
+    st.header("📊 시스템 상태")
+    try:
+        response = requests.get(f"{st.session_state.API_BASE_URL}/health")
+        if response.status_code == 200:
+            st.success("✅ 서버 연결됨")
+        else:
+            st.error("❌ 서버 연결 실패")
+    except:
+        st.error("❌ 서버 연결 불가")
+    
+    st.markdown("---")
+    st.header("🧭 네비게이션")
+    
+    if st.button("🏠 홈으로 이동", key="nav_home"):
+        st.switch_page("pages/home.py")  # 🔥 변경: app.py → pages/home.py
+    
+    if st.button("🎙️ 통화 분석", key="nav_analysis"):
+        st.switch_page("pages/analysis_page.py")
