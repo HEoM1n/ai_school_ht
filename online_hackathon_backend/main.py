@@ -11,8 +11,8 @@ from typing import Optional
 from datetime import datetime
 
 # 로컬 import
-from database import get_db, engine, Base
-from models import PhishingPhone
+# from database import get_db, engine, Base
+# from models import PhoneReport
 
 app = FastAPI(title="Voice Phishing Detection Server")
 
@@ -30,7 +30,7 @@ UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 # DB 테이블 생성
-Base.metadata.create_all(bind=engine)
+# Base.metadata.create_all(bind=engine)
 
 # 응답 모델
 class UploadResponse(BaseModel):
@@ -55,76 +55,75 @@ class PhoneCheckResponse(BaseModel):
     message: str
     details: Optional[dict] = None
 
-# 전화번호 검색 엔드포인트
+# 전화번호 검색 엔드포인트 (가짜 데이터 사용)
 @app.post("/check-phone", response_model=PhoneCheckResponse)
-async def check_phone_number(request: PhoneCheckRequest, db: Session = Depends(get_db)):
-    """전화번호 보이스피싱 DB 검색"""
+async def check_phone_number(request: PhoneCheckRequest):
+    """전화번호 보이스피싱 DB 검색 (가짜 데이터)"""
     
     phone_number = request.phone_number.strip()
     
-    # 전화번호 포맷 정규화 (하이픈 제거)
-    clean_number = phone_number.replace("-", "").replace(" ", "")
-    
-    # DB에서 검색
-    phishing_record = db.query(PhishingPhone).filter(
-        PhishingPhone.phone_number == clean_number
-    ).first()
-    
-    if phishing_record:
+    # 특정 번호("1234" 포함)에 대해 '피싱'으로 응답하는 가짜 로직
+    if "1234" in phone_number:
         return PhoneCheckResponse(
             phone_number=phone_number,
             is_phishing=True,
             confidence=0.95,
-            message="⚠️ 이 번호는 보이스피싱 의심 번호로 신고된 이력이 있습니다!",
+            message="⚠️ [가짜 데이터] 이 번호는 보이스피싱 의심 번호로 신고된 이력이 있습니다!",
             details={
-                "reported_date": phishing_record.reported_date.strftime("%Y-%m-%d %H:%M:%S"),
-                "reporter_name": phishing_record.reporter_name,
-                "description": phishing_record.description,
-                "confirmation_status": "확인됨" if phishing_record.is_confirmed else "미확인"
+                "spam_type": "User Reported",
+                "description": "가짜 데이터: 고액 알바를 빙자한 금융 사기 시도",
+                "report_count": 3,
+                "reported_date": "2024-05-15",
+                "reporter_name": "김*민"
             }
         )
     else:
         return PhoneCheckResponse(
             phone_number=phone_number,
             is_phishing=False,
-            confidence=0.8,
-            message="✅ 이 번호는 보이스피싱 DB에서 발견되지 않았습니다.",
+            confidence=0.99,
+            message="✅ [가짜 데이터] 이 번호는 보이스피싱 DB에서 발견되지 않았습니다.",
             details=None
         )
 
-# 보이스피싱 번호 신고 엔드포인트
-@app.post("/report-phone")
-async def report_phone_number(
-    phone_number: str,
-    reporter_name: str = "익명",
-    description: str = "",
-    db: Session = Depends(get_db)
-):
-    """보이스피싱 번호 신고"""
+# # 보이스피싱 번호 신고 엔드포인트
+# @app.post("/report-phone")
+# async def report_phone_number(
+#     phone_number: str,
+#     reporter_name: str = "익명",
+#     description: str = "",
+#     db: Session = Depends(get_db)
+# ):
+#     """보이스피싱 번호 신고"""
     
-    clean_number = phone_number.replace("-", "").replace(" ", "")
+#     clean_number = phone_number.replace("-", "").replace(" ", "")
     
-    # 이미 존재하는지 확인
-    existing = db.query(PhishingPhone).filter(
-        PhishingPhone.phone_number == clean_number
-    ).first()
+#     # 이미 존재하는지 확인
+#     existing = db.query(PhoneReport).filter(
+#         PhoneReport.phone_number == clean_number
+#     ).first()
     
-    if existing:
-        return {"message": "이미 신고된 번호입니다.", "status": "exists"}
+#     if existing:
+#         # 이미 존재하면 report_count를 1 증가
+#         existing.report_count += 1
+#         db.commit()
+#         db.refresh(existing)
+#         return {"message": "신고 횟수가 1 증가했습니다.", "status": "updated", "id": existing.id}
     
-    # 새로운 신고 추가
-    new_report = PhishingPhone(
-        phone_number=clean_number,
-        reporter_name=reporter_name,
-        description=description,
-        is_confirmed=False  # 관리자 확인 필요
-    )
+#     # 새로운 신고 추가
+#     new_report = PhoneReport(
+#         phone_number=clean_number,
+#         is_phishing=True,  # 신고된 것은 피싱으로 간주
+#         spam_type="User Reported", # 신고 유형
+#         description=description,
+#         report_count=1
+#     )
     
-    db.add(new_report)
-    db.commit()
-    db.refresh(new_report)
+#     db.add(new_report)
+#     db.commit()
+#     db.refresh(new_report)
     
-    return {"message": "신고가 접수되었습니다.", "status": "success", "id": new_report.id}
+#     return {"message": "신고가 접수되었습니다.", "status": "success", "id": new_report.id}
 
 # 기존 파일 업로드 엔드포인트
 @app.post("/upload", response_model=UploadResponse)
@@ -166,23 +165,25 @@ async def upload_audio_file(file: UploadFile = File(...)):
             file_path.unlink()
         raise HTTPException(status_code=500, detail=f"파일 업로드 실패: {str(e)}")
 
+class AnalyzeRequest(BaseModel):
+    file_path: str
+
 # 분석 요청 엔드포인트
 @app.post("/analyze", response_model=AnalysisResponse)
-async def analyze_audio(file_path: str):
+async def analyze_audio(request: AnalyzeRequest):
     """파일 경로를 받아 분석 요청"""
     
     # 파일 존재 여부 확인
-    if not os.path.exists(file_path):
+    if not os.path.exists(request.file_path):
         raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
     
     # 클라우드 경로 모킹
-    cloud_path = f"gs://voice-analysis-bucket/{os.path.basename(file_path)}"
+    cloud_path = f"gs://voice-analysis-bucket/{os.path.basename(request.file_path)}"
     
     # 분석 결과 모킹 (실제로는 AI 모델 분석 결과)
     mock_analysis_result = {
         "is_phishing": True,
         "confidence": 0.87,
-        "deepfake_probability": 0.72,
         "content_analysis": {
             "risk_keywords": ["긴급", "계좌이체", "확인"],
             "sentiment_score": -0.65,
@@ -197,7 +198,7 @@ async def analyze_audio(file_path: str):
     }
     
     return AnalysisResponse(
-        file_path=file_path,
+        file_path=request.file_path,
         cloud_path=cloud_path,
         analysis_result=mock_analysis_result
     )

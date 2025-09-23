@@ -5,7 +5,7 @@ from datetime import datetime
 col1, col2, col3 = st.columns([1, 4, 1])
 with col1:
     if st.button("🏠 홈으로", type="secondary"):
-        st.switch_page("pages/home.py")  # 🔥 변경")
+        st.switch_page("pages/home.py")
 
 # 페이지 제목
 st.title("📊 분석 결과")
@@ -16,7 +16,7 @@ st.markdown("---")
 if 'analysis_result' not in st.session_state:
     st.error("⚠️ 분석 결과가 없습니다.")
     if st.button("🏠 메인 페이지로 돌아가기"):
-        st.switch_page("pages/home.py")  # 🔥 변경
+        st.switch_page("pages/home.py")
     st.stop()
 
 # 결과 데이터 가져오기
@@ -50,19 +50,16 @@ else:
 
 # 핵심 메트릭 표시
 st.markdown("### 📈 핵심 지표")
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3 = st.columns(3)
 
 with col1:
     st.metric("전체 신뢰도", f"{result_data['confidence']:.1%}")
 
 with col2:
-    st.metric("딥페이크 확률", f"{result_data['deepfake_probability']:.1%}")
-
-with col3:
     content_analysis = result_data['content_analysis']
     st.metric("긴급도", content_analysis['urgency_level'].upper())
 
-with col4:
+with col3:
     st.metric("처리 시간", f"{result_data['processing_time']:.1f}초")
 
 # 진행률 바로 위험도 시각화
@@ -116,7 +113,7 @@ with col1:
             del st.session_state['analysis_result']
         if 'upload_result' in st.session_state:
             del st.session_state['upload_result']
-        st.switch_page("pages/home.py")  # 🔥 변경
+        st.switch_page("pages/home.py")
 
 with col2:
     if st.button("🎙️ 새 파일 분석", use_container_width=True):
@@ -136,7 +133,7 @@ with st.sidebar:
     st.header("🧭 네비게이션")
     
     if st.button("🏠 홈으로", type="secondary"):
-        st.switch_page("pages/home.py")  # ✅ 수정
+        st.switch_page("pages/home.py")
 
     
     if st.button("📞 번호 검색", key="nav_phone"):

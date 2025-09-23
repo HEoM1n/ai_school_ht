@@ -23,7 +23,7 @@ def validate_phone_number(phone_number):
 col1, col2, col3 = st.columns([1, 4, 1])
 with col1:
     if st.button("🏠 홈으로", type="secondary"):
-        st.switch_page("pages/home.py")  # home.py로 변경
+        st.switch_page("pages/home.py")
 
 # 페이지 제목
 st.title("📞 전화번호 검색")
@@ -65,15 +65,9 @@ if search_button and phone_input:
                         details = result["details"]
                         
                         with st.expander("📋 상세 정보", expanded=True):
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                st.write(f"**신고일:** {details['reported_date']}")
-                                st.write(f"**신고자:** {details['reporter_name']}")
-                            with col2:
-                                st.write(f"**확인 상태:** {details['confirmation_status']}")
-                                st.write(f"**신뢰도:** {result['confidence']:.1%}")
-                            
-                            if details['description']:
+                            st.write(f"**신고일:** {details.get('reported_date', 'N/A')}")
+                            st.write(f"**신고자:** {details.get('reporter_name', 'N/A')}")
+                            if details.get('description'):
                                 st.write(f"**상세 내용:** {details['description']}")
                     
                     # 주의사항
@@ -118,7 +112,7 @@ with st.sidebar:
     st.header("🧭 네비게이션")
     
     if st.button("🏠 홈으로 이동", key="nav_home"):
-        st.switch_page("pages/home.py")  # 🔥 변경: app.py → pages/home.py
+        st.switch_page("pages/home.py")
     
     if st.button("🎙️ 통화 분석", key="nav_analysis"):
         st.switch_page("pages/analysis_page.py")
