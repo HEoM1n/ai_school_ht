@@ -9,9 +9,7 @@ st.set_page_config(
 
 # API 설정
 if 'API_BASE_URL' not in st.session_state:
-    # Docker 환경에서는 환경변수 사용, 로컬에서는 localhost 사용
-    import os
-    st.session_state.API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+    st.session_state.API_BASE_URL = "http://backend:8001"
 
 # 페이지 정의
 home_page = st.Page(
