@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     wget \
     unzip \
-    libaio1 \
+    libaio-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Oracle Instant Client 설치
